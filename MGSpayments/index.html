@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>MGS Payments</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#060d1f;--bg2:#0d1929;--bg3:#1a2540;
+  --blue:#2563eb;--blue2:#1d4ed8;--blue3:#3b82f6;
+  --gold:#f59e0b;--green:#10b981;--red:#ef4444;
+  --white:#f0f6ff;--gray:#64748b;--gray2:#94a3b8;
+  --line:rgba(255,255,255,0.06);
+  --shadow:0 8px 32px rgba(0,0,0,0.5);
+  --glow:0 0 30px rgba(37,99,235,0.3);
+}
+*{font-family:'Segoe UI',system-ui,sans-serif;}
+body{background:var(--bg);color:var(--white);min-height:100vh;}
+
+/* LOADING */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(37,99,235,0.4)}50%{box-shadow:0 0 40px rgba(37,99,235,0.8)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.spinner{width:36px;height:36px;border:3px solid rgba(37,99,235,0.2);border-top-color:var(--blue3);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px;}
+
+/* LOGO SVG */
+.mgs-pay-logo{display:flex;flex-direction:column;align-items:center;}
+
+/* SCREENS */
+.screen{display:none;}
+.screen.active{display:flex;flex-direction:column;min-height:100vh;}
+
+/* AUTH */
+#auth{align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden;}
+#auth::before{content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(ellipse,rgba(37,99,235,0.12) 0%,transparent 70%);pointer-events:none;}
+.auth-card{background:var(--bg2);border:1px solid rgba(37,99,235,0.2);border-radius:24px;padding:32px;width:100%;max-width:400px;box-shadow:var(--shadow);animation:fadeIn .4s ease;position:relative;z-index:1;}
+.auth-logo-wrap{text-align:center;margin-bottom:28px;}
+.auth-brand{margin-top:12px;}
+.auth-brand-title{font-size:22px;font-weight:900;letter-spacing:-0.5px;background:linear-gradient(135deg,#fff,var(--blue3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.auth-brand-sub{font-size:11px;color:var(--gray2);letter-spacing:3px;text-transform:uppercase;margin-top:2px;}
+.tabs{display:flex;background:var(--bg3);border-radius:12px;padding:4px;margin-bottom:24px;gap:4px;}
+.tab{flex:1;padding:9px;border:none;border-radius:9px;background:transparent;color:var(--gray2);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+.tab.active{background:var(--blue2);color:white;box-shadow:0 2px 8px rgba(37,99,235,0.4);}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;}
+.field input,.field select,.field textarea{width:100%;padding:12px 14px;background:var(--bg3);border:1px solid var(--line);border-radius:10px;color:var(--white);font-size:14px;outline:none;transition:border .2s;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue3);box-shadow:0 0 0 3px rgba(59,130,246,0.1);}
+.field textarea{resize:vertical;min-height:100px;}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;}
+.btn-blue{background:linear-gradient(135deg,var(--blue2),var(--blue3));color:white;box-shadow:0 4px 15px rgba(37,99,235,0.3);}
+.btn-blue:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(37,99,235,0.4);}
+.btn-gold{background:linear-gradient(135deg,#d97706,var(--gold));color:#111;font-weight:800;}
+.btn-green{background:linear-gradient(135deg,#059669,var(--green));color:white;}
+.btn-red{background:linear-gradient(135deg,#dc2626,var(--red));color:white;}
+.btn-outline{background:transparent;border:1px solid var(--line);color:var(--gray2);font-size:13px;}
+.btn-outline:hover{border-color:var(--blue3);color:var(--blue3);}
+.btn-sm{width:auto;padding:7px 14px;font-size:12px;border-radius:8px;}
+.err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:10px 14px;color:var(--red);font-size:12px;margin-bottom:12px;display:none;}
+.suc{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:10px 14px;color:var(--green);font-size:12px;margin-bottom:12px;display:none;}
+.info{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:8px;padding:12px 14px;color:var(--blue3);font-size:12px;margin-bottom:14px;line-height:1.6;}
+.admin-link{text-align:center;margin-top:14px;}
+.admin-link button{background:none;border:none;color:var(--gray);font-size:12px;cursor:pointer;}
+.admin-link button:hover{color:var(--gray2);}
+
+/* PENDING */
+#pending{align-items:center;justify-content:center;padding:20px;}
+.pending-card{background:var(--bg2);border:1px solid rgba(245,158,11,0.3);border-radius:24px;padding:32px;width:100%;max-width:400px;text-align:center;box-shadow:var(--shadow);animation:fadeIn .4s ease;}
+.pending-icon{font-size:52px;margin-bottom:16px;animation:float 3s ease infinite;}
+
+/* TOPBAR */
+.topbar{background:rgba(13,25,41,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.topbar-left{display:flex;align-items:center;gap:10px;}
+.topbar-brand{font-size:15px;font-weight:800;background:linear-gradient(135deg,#fff,var(--blue3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.topbar-user{font-size:12px;color:var(--gray2);}
+.topbar-user strong{color:var(--white);}
+
+/* CONTENT */
+.content{flex:1;padding:20px;max-width:620px;margin:0 auto;width:100%;}
+
+/* BALANCE CARD */
+.balance-card{background:linear-gradient(135deg,#0f2060,#1a3a8a,#0f2060);border:1px solid rgba(59,130,246,0.3);border-radius:22px;padding:28px;margin-bottom:20px;position:relative;overflow:hidden;box-shadow:var(--glow);}
+.balance-card::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:rgba(59,130,246,0.06);border-radius:50%;}
+.balance-card::after{content:'';position:absolute;bottom:-40px;left:-40px;width:150px;height:150px;background:rgba(245,158,11,0.04);border-radius:50%;}
+.balance-label{font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+.balance-amount{font-size:44px;font-weight:900;color:var(--gold);letter-spacing:-2px;line-height:1;}
+.balance-currency{font-size:18px;color:rgba(255,255,255,0.4);margin-left:6px;font-weight:400;}
+.balance-divider{border:none;border-top:1px solid rgba(255,255,255,0.08);margin:16px 0;}
+.balance-info{display:flex;gap:20px;}
+.balance-info-item{font-size:11px;color:rgba(255,255,255,0.4);}
+.balance-info-item strong{color:rgba(255,255,255,0.8);font-size:13px;display:block;margin-top:2px;}
+
+/* CARD */
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:14px;}
+.card-title{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;}
+
+/* ACTION BTN */
+.action-btn{display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg3);border:1px solid var(--line);border-radius:14px;margin-bottom:10px;cursor:pointer;transition:all .2s;width:100%;text-align:left;}
+.action-btn:hover{border-color:rgba(59,130,246,0.4);background:rgba(37,99,235,0.06);transform:translateX(2px);}
+.action-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.action-info{flex:1;}
+.action-title{font-size:14px;font-weight:600;color:var(--white);}
+.action-sub{font-size:12px;color:var(--gray2);margin-top:2px;}
+.action-arrow{color:var(--gray);font-size:18px;}
+
+/* INVEST ITEM */
+.invest-item{padding:14px;background:var(--bg3);border-radius:12px;margin-bottom:8px;border-left:3px solid var(--blue3);}
+.invest-item.paid{border-left-color:var(--green);}
+.invest-item.pending{border-left-color:var(--gold);}
+.invest-amount{font-size:18px;font-weight:800;}
+.invest-meta{font-size:11px;color:var(--gray2);margin-top:4px;line-height:1.5;}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-top:6px;}
+.badge-gold{background:rgba(245,158,11,.12);color:var(--gold);}
+.badge-blue{background:rgba(59,130,246,.12);color:var(--blue3);}
+.badge-green{background:rgba(16,185,129,.12);color:var(--green);}
+.badge-red{background:rgba(239,68,68,.12);color:var(--red);}
+
+/* MSG */
+.msg-item{padding:14px;background:var(--bg3);border-radius:12px;margin-bottom:8px;border-left:3px solid transparent;}
+.msg-item.unread{border-left-color:var(--blue3);}
+.msg-from{font-size:11px;font-weight:700;color:var(--blue3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.msg-text{font-size:13px;color:var(--white);line-height:1.6;}
+.msg-date{font-size:10px;color:var(--gray);margin-top:6px;}
+
+/* ADMIN */
+.nav-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg2);border-radius:12px;padding:4px;}
+.nav-tab{flex:1;padding:9px 4px;border:none;border-radius:9px;background:transparent;color:var(--gray2);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;}
+.nav-tab.active{background:var(--blue2);color:white;}
+.user-row{padding:16px;background:var(--bg3);border-radius:14px;margin-bottom:8px;border:1px solid var(--line);}
+.user-row-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.user-name{font-size:14px;font-weight:700;}
+.user-balance{font-size:15px;color:var(--gold);font-weight:800;}
+.user-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:200;display:none;align-items:flex-end;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid rgba(37,99,235,0.2);border-radius:24px 24px 0 0;padding:24px 24px 36px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;animation:fadeIn .3s ease;}
+.modal-handle{width:40px;height:4px;background:var(--line);border-radius:2px;margin:0 auto 20px;}
+.modal-title{font-size:18px;font-weight:800;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;}
+.modal-close{background:none;border:none;color:var(--gray2);font-size:22px;cursor:pointer;line-height:1;}
+
+@media(min-width:600px){
+  .modal-bg{align-items:center;}
+  .modal{border-radius:24px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <svg width="140" height="40" viewBox="0 0 140 40" fill="none" style="margin-bottom:6px">
+    <text x="0" y="30" font-family="Segoe UI" font-weight="900" font-size="26" fill="url(#lg1)">MGS</text>
+    <text x="52" y="30" font-family="Segoe UI" font-weight="300" font-size="26" fill="#94a3b8"> Payments</text>
+    <defs>
+      <linearGradient id="lg1" x1="0" y1="0" x2="50" y2="0">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="100%" stop-color="#3b82f6"/>
+      </linearGradient>
+    </defs>
+  </svg>
+  <div style="font-size:10px;color:var(--gray);letter-spacing:3px;text-transform:uppercase">Ekaf Corporation</div>
+</div>
+
+<!-- AUTH -->
+<div id="auth" class="screen">
+  <div class="auth-card">
+    <div class="auth-logo-wrap">
+      <!-- Logo MGS Payments -->
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" style="animation:glow 3s ease infinite">
+        <rect width="64" height="64" rx="16" fill="url(#bg1)"/>
+        <!-- Fałda cyfrowa -->
+        <path d="M8 42 Q20 28 32 35 Q44 42 56 22" stroke="url(#wave1)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M8 48 Q20 34 32 41 Q44 48 56 28" stroke="url(#wave2)" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+        <!-- Litera M -->
+        <text x="14" y="34" font-family="Segoe UI" font-weight="900" font-size="26" fill="white">M</text>
+        <!-- Strzałka płatności -->
+        <circle cx="50" cy="16" r="8" fill="url(#arrow1)"/>
+        <path d="M47 16 L53 16 M50 13 L53 16 L50 19" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs>
+          <linearGradient id="bg1" x1="0" y1="0" x2="64" y2="64">
+            <stop offset="0%" stop-color="#0f2060"/>
+            <stop offset="100%" stop-color="#1a3a8a"/>
+          </linearGradient>
+          <linearGradient id="wave1" x1="8" y1="42" x2="56" y2="22">
+            <stop offset="0%" stop-color="#3b82f6"/>
+            <stop offset="100%" stop-color="#f59e0b"/>
+          </linearGradient>
+          <linearGradient id="wave2" x1="8" y1="48" x2="56" y2="28">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.5"/>
+          </linearGradient>
+          <linearGradient id="arrow1" x1="42" y1="8" x2="58" y2="24">
+            <stop offset="0%" stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#f97316"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="auth-brand">
+        <div class="auth-brand-title">MGS Payments</div>
+        <div class="auth-brand-sub">by Ekaf Corporation</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login',this)">Zaloguj się</button>
+      <button class="tab" onclick="switchTab('register',this)">Zarejestruj</button>
+    </div>
+
+    <div id="auth-err" class="err"></div>
+    <div id="auth-suc" class="suc"></div>
+    <div class="field"><label>Login</label><input type="text" id="a-user" placeholder="np. jan123" autocomplete="off"></div>
+    <div class="field"><label>Hasło</label><input type="password" id="a-pass" placeholder="••••••••" autocomplete="new-password"></div>
+    <div id="cso-field" class="field" style="display:none">
+      <label>Numer karty CSO</label>
+      <input type="text" id="a-cso" placeholder="np. CSO-12345" autocomplete="off">
+      <div style="font-size:11px;color:var(--gray2);margin-top:4px">Wymagana do aktywacji przez administratora</div>
+    </div>
+    <button class="btn btn-blue" id="auth-btn" onclick="handleAuth()">Zaloguj się</button>
+    <div class="admin-link">
+      <button onclick="openAdminLogin()">Panel Admina →</button>
+    </div>
+  </div>
+</div>
+
+<!-- PENDING -->
+<div id="pending" class="screen">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px;">
+    <div class="pending-card">
+      <div class="pending-icon">⏳</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:10px">Konto oczekuje</div>
+      <div style="font-size:13px;color:var(--gray2);line-height:1.7;margin-bottom:20px">
+        Twoje konto zostało zarejestrowane.<br>Administrator musi je aktywować.<br><br>
+        Numer karty CSO: <strong id="pending-cso" style="color:var(--gold)"></strong><br><br>
+        Skontaktuj się z biurem MGS Corporation.
+      </div>
+      <button class="btn btn-outline" onclick="logout()">Wyloguj się</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP USER -->
+<div id="app" class="screen">
+  <div class="topbar">
+    <div class="topbar-left">
+      <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="14" fill="url(#bg1b)"/>
+        <path d="M8 42 Q20 28 32 35 Q44 42 56 22" stroke="url(#wave1b)" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <text x="14" y="34" font-family="Segoe UI" font-weight="900" font-size="26" fill="white">M</text>
+        <circle cx="50" cy="16" r="8" fill="url(#arrow1b)"/>
+        <path d="M47 16 L53 16 M50 13 L53 16 L50 19" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs>
+          <linearGradient id="bg1b" x1="0" y1="0" x2="64" y2="64"><stop offset="0%" stop-color="#0f2060"/><stop offset="100%" stop-color="#1a3a8a"/></linearGradient>
+          <linearGradient id="wave1b" x1="8" y1="42" x2="56" y2="22"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient>
+          <linearGradient id="arrow1b" x1="42" y1="8" x2="58" y2="24"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#f97316"/></linearGradient>
+        </defs>
+      </svg>
+      <span class="topbar-brand">MGS Payments</span>
+    </div>
+    <div class="topbar-user">Witaj, <strong id="topbar-name">-</strong></div>
+  </div>
+
+  <div class="content">
+    <div class="balance-card">
+      <div class="balance-label">Twoje saldo</div>
+      <div><span class="balance-amount" id="user-balance">0</span><span class="balance-currency">MGS</span></div>
+      <div class="balance-divider"></div>
+      <div class="balance-info">
+        <div class="balance-info-item">Status konta <strong style="color:var(--green)">● Aktywne</strong></div>
+        <div class="balance-info-item">MGS Payments <strong>v2.0</strong></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Operacje</div>
+      <button class="action-btn" onclick="openModal('modal-invest')">
+        <div class="action-icon" style="background:rgba(16,185,129,.12)">📈</div>
+        <div class="action-info">
+          <div class="action-title">Inwestuj MGS</div>
+          <div class="action-sub">Zysk 10–29% po tygodniu</div>
+        </div>
+        <div class="action-arrow">›</div>
+      </button>
+      <button class="action-btn" onclick="openModal('modal-message')">
+        <div class="action-icon" style="background:rgba(59,130,246,.12)">✉️</div>
+        <div class="action-info">
+          <div class="action-title">Napisz do administracji</div>
+          <div class="action-sub">Pytania, prośby, zgłoszenia</div>
+        </div>
+        <div class="action-arrow">›</div>
+      </button>
+      <button class="action-btn" onclick="requestDelete()">
+        <div class="action-icon" style="background:rgba(239,68,68,.12)">🗑️</div>
+        <div class="action-info">
+          <div class="action-title">Usuń konto</div>
+          <div class="action-sub">Wyślij prośbę o usunięcie</div>
+        </div>
+        <div class="action-arrow">›</div>
+      </button>
+      <button class="action-btn" onclick="logout()">
+        <div class="action-icon" style="background:rgba(100,116,139,.12)">🚪</div>
+        <div class="action-info">
+          <div class="action-title">Wyloguj się</div>
+          <div class="action-sub">Bezpieczne wyjście</div>
+        </div>
+        <div class="action-arrow">›</div>
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Moje inwestycje</div>
+      <div id="user-investments"><div style="color:var(--gray2);font-size:13px;text-align:center;padding:16px">Brak inwestycji</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Wiadomości od administracji</div>
+      <div id="user-messages"><div style="color:var(--gray2);font-size:13px;text-align:center;padding:16px">Brak wiadomości</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="screen">
+  <div class="topbar">
+    <div class="topbar-left">
+      <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+        <rect width="64" height="64" rx="14" fill="url(#bg1c)"/>
+        <path d="M8 42 Q20 28 32 35 Q44 42 56 22" stroke="url(#wave1c)" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <text x="14" y="34" font-family="Segoe UI" font-weight="900" font-size="26" fill="white">M</text>
+        <circle cx="50" cy="16" r="8" fill="url(#arrow1c)"/>
+        <path d="M47 16 L53 16 M50 13 L53 16 L50 19" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs>
+          <linearGradient id="bg1c" x1="0" y1="0" x2="64" y2="64"><stop offset="0%" stop-color="#0f2060"/><stop offset="100%" stop-color="#1a3a8a"/></linearGradient>
+          <linearGradient id="wave1c" x1="8" y1="42" x2="56" y2="22"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient>
+          <linearGradient id="arrow1c" x1="42" y1="8" x2="58" y2="24"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#f97316"/></linearGradient>
+        </defs>
+      </svg>
+      <span class="topbar-brand">Admin Panel</span>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="logout()">Wyloguj</button>
+  </div>
+
+  <div class="content">
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="adminTab('users',this)">Użytkownicy</button>
+      <button class="nav-tab" onclick="adminTab('pending',this)">Oczekujące</button>
+      <button class="nav-tab" onclick="adminTab('investments',this)">Inwestycje</button>
+      <button class="nav-tab" onclick="adminTab('messages',this)">Wiadomości</button>
+    </div>
+
+    <div id="admin-tab-users">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-blue btn-sm" onclick="openModal('modal-add-user')">+ Dodaj użytkownika</button>
+        <button class="btn btn-gold btn-sm" onclick="openModal('modal-add-funds')">+ Dodaj środki</button>
+        <button class="btn btn-blue btn-sm" onclick="openModal('modal-send-msg')">✉️ Wyślij wiadomość</button>
+      </div>
+      <div id="admin-users-list"></div>
+    </div>
+
+    <div id="admin-tab-pending" style="display:none">
+      <div id="admin-pending-list"></div>
+    </div>
+
+    <div id="admin-tab-investments" style="display:none">
+      <div id="admin-invest-list"></div>
+    </div>
+
+    <div id="admin-tab-messages" style="display:none">
+      <div id="admin-messages-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: INVEST -->
+<div class="modal-bg" id="modal-invest">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Inwestuj MGS <button class="modal-close" onclick="closeModal('modal-invest')">×</button></div>
+    <div class="info">Zainwestuj MGS i zyskaj <strong>10–29%</strong> po tygodniu. W rzadkich przypadkach możliwa strata 10%.</div>
+    <div id="invest-err" class="err"></div>
+    <div id="invest-suc" class="suc"></div>
+    <div class="field"><label>Kwota MGS</label><input type="number" id="invest-amount" placeholder="np. 100" min="1"></div>
+    <button class="btn btn-green" onclick="doInvest()">Zainwestuj</button>
+  </div>
+</div>
+
+<!-- MODAL: MESSAGE (USER) -->
+<div class="modal-bg" id="modal-message">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Napisz do administracji <button class="modal-close" onclick="closeModal('modal-message')">×</button></div>
+    <div id="msg-err" class="err"></div>
+    <div id="msg-suc" class="suc"></div>
+    <div class="field"><label>Wiadomość</label><textarea id="msg-content" placeholder="Wpisz wiadomość..."></textarea></div>
+    <button class="btn btn-blue" onclick="sendMessage()">Wyślij</button>
+  </div>
+</div>
+
+<!-- MODAL: ADMIN LOGIN -->
+<div class="modal-bg" id="modal-admin-login">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Panel Admina <button class="modal-close" onclick="closeModal('modal-admin-login')">×</button></div>
+    <div id="admin-login-err" class="err"></div>
+    <div class="field"><label>Login</label><input type="text" id="al-user" placeholder="milosz" autocomplete="off"></div>
+    <div class="field"><label>Hasło</label><input type="password" id="al-pass" placeholder="••••••••" autocomplete="new-password"></div>
+    <button class="btn btn-gold" onclick="loginAdmin()">Zaloguj jako Admin</button>
+  </div>
+</div>
+
+<!-- MODAL: ADD USER -->
+<div class="modal-bg" id="modal-add-user">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Dodaj użytkownika <button class="modal-close" onclick="closeModal('modal-add-user')">×</button></div>
+    <div id="add-user-err" class="err"></div>
+    <div id="add-user-suc" class="suc"></div>
+    <div class="field"><label>Login</label><input type="text" id="nu-user" placeholder="np. jan123" autocomplete="off"></div>
+    <div class="field"><label>Hasło</label><input type="text" id="nu-pass" placeholder="np. haslo123"></div>
+    <div class="field"><label>Saldo startowe (MGS)</label><input type="number" id="nu-balance" value="0" min="0"></div>
+    <button class="btn btn-blue" onclick="adminAddUser()">Dodaj</button>
+  </div>
+</div>
+
+<!-- MODAL: ADD FUNDS -->
+<div class="modal-bg" id="modal-add-funds">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Dodaj środki <button class="modal-close" onclick="closeModal('modal-add-funds')">×</button></div>
+    <div id="add-funds-err" class="err"></div>
+    <div id="add-funds-suc" class="suc"></div>
+    <div class="field"><label>Login użytkownika</label><input type="text" id="af-user" placeholder="np. jan123" autocomplete="off"></div>
+    <div class="field"><label>Kwota MGS</label><input type="number" id="af-amount" placeholder="np. 500" min="1"></div>
+    <button class="btn btn-green" onclick="adminAddFunds()">Dodaj środki</button>
+  </div>
+</div>
+
+<!-- MODAL: SET PERCENT -->
+<div class="modal-bg" id="modal-set-percent">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Ustaw procent <button class="modal-close" onclick="closeModal('modal-set-percent')">×</button></div>
+    <div id="percent-err" class="err"></div>
+    <div id="percent-suc" class="suc"></div>
+    <input type="hidden" id="percent-invest-id">
+    <input type="hidden" id="percent-user-id">
+    <input type="hidden" id="percent-amount">
+    <div id="percent-invest-info" class="info" style="margin-bottom:14px"></div>
+    <div class="field">
+      <label>Procent zysku / straty</label>
+      <input type="number" id="percent-val" placeholder="np. 10 lub -10" step="1">
+      <div style="font-size:11px;color:var(--gray2);margin-top:4px">Wpisz np. 10 dla +10%, 29 dla +29%, -10 dla straty 10%</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-green" onclick="adminSetPercent(false)" style="flex:1">Ustaw % (wypłata za tydzień)</button>
+      <button class="btn btn-gold btn-sm" onclick="adminSetPercent(true)">💰 Wypłać teraz</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SEND MSG (ADMIN) -->
+<div class="modal-bg" id="modal-send-msg">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Wyślij wiadomość <button class="modal-close" onclick="closeModal('modal-send-msg')">×</button></div>
+    <div id="send-msg-err" class="err"></div>
+    <div id="send-msg-suc" class="suc"></div>
+    <div class="field"><label>Do (login lub "wszyscy")</label><input type="text" id="sm-to" placeholder="np. jan123 lub wszyscy" autocomplete="off"></div>
+    <div class="field"><label>Wiadomość</label><textarea id="sm-content" placeholder="Treść wiadomości..."></textarea></div>
+    <button class="btn btn-blue" onclick="adminSendMessage()">Wyślij</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://ibafumzehizoamwiixlc.supabase.co'
+var SUPABASE_KEY = 'sb_publishable_1pJjII-6FCQGkIbqcKuTiQ_QPtZw8bv'
+var db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+var currentUser = null
+var authMode = 'login'
+
+// INIT
+window.onload = async function(){
+  setTimeout(async function(){
+    document.getElementById('loading').style.display = 'none'
+    var saved = localStorage.getItem('mgspay_user')
+    if(saved){
+      try{
+        currentUser = JSON.parse(saved)
+        var fresh = await db.from('users').select('*').eq('id',currentUser.id).maybeSingle()
+        if(fresh.data){
+          currentUser = fresh.data
+          localStorage.setItem('mgspay_user',JSON.stringify(currentUser))
+          routeUser()
+        } else { showScreen('auth') }
+      }catch(e){ showScreen('auth') }
+    } else { showScreen('auth') }
+  }, 1200)
+}
+
+function routeUser(){
+  if(currentUser.is_admin) showAdminApp()
+  else if(!currentUser.approved) showPending()
+  else showUserApp()
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active')})
+  document.getElementById(id).classList.add('active')
+}
+
+function showUserApp(){
+  showScreen('app')
+  document.getElementById('topbar-name').textContent = currentUser.username
+  document.getElementById('user-balance').textContent = currentUser.balance
+  loadUserInvestments()
+  loadUserMessages()
+}
+
+function showAdminApp(){
+  showScreen('admin')
+  loadAdminUsers()
+}
+
+function showPending(){
+  showScreen('pending')
+  document.getElementById('pending-cso').textContent = currentUser.cso_card || '-'
+}
+
+function logout(){
+  currentUser = null
+  localStorage.removeItem('mgspay_user')
+  document.getElementById('a-user').value = ''
+  document.getElementById('a-pass').value = ''
+  document.getElementById('a-cso').value = ''
+  document.getElementById('al-user').value = ''
+  document.getElementById('al-pass').value = ''
+  document.getElementById('auth-err').style.display = 'none'
+  document.getElementById('auth-suc').style.display = 'none'
+  showScreen('auth')
+}
+
+// AUTH
+function switchTab(mode, btn){
+  authMode = mode
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')})
+  btn.classList.add('active')
+  document.getElementById('auth-btn').textContent = mode==='login' ? 'Zaloguj się' : 'Zarejestruj się'
+  document.getElementById('cso-field').style.display = mode==='register' ? 'block' : 'none'
+}
+
+async function handleAuth(){
+  var username = document.getElementById('a-user').value.trim()
+  var password = document.getElementById('a-pass').value
+  var errEl = document.getElementById('auth-err')
+  var sucEl = document.getElementById('auth-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!username||!password){ showE(errEl,'Wypełnij wszystkie pola!'); return }
+
+  if(authMode==='login'){
+    var res = await db.from('users').select('*').eq('username',username).maybeSingle()
+    if(!res.data){ showE(errEl,'Nie znaleziono użytkownika!'); return }
+if(res.data.password!==password){ showE(errEl,'Błędne hasło!'); return }
+if(res.data.blocked){ showE(errEl,'Konto zablokowane: '+(res.data.block_reason||'Brak powodu')); return }
+currentUser = res.data
+    localStorage.setItem('mgspay_user',JSON.stringify(currentUser))
+    routeUser()
+  } else {
+    var cso = document.getElementById('a-cso').value.trim()
+    if(!cso){ showE(errEl,'Wpisz numer karty CSO!'); return }
+    var check = await db.from('users').select('id').eq('username',username).maybeSingle()
+    if(check.data){ showE(errEl,'Login już zajęty!'); return }
+    var ins = await db.from('users').insert({username,password,cso_card:cso,balance:0,approved:false,is_admin:false}).select().single()
+    if(ins.error){ showE(errEl,'Błąd: '+ins.error.message); return }
+    currentUser = ins.data
+    localStorage.setItem('mgspay_user',JSON.stringify(currentUser))
+    showPending()
+  }
+}
+
+function openAdminLogin(){
+  document.getElementById('al-user').value = ''
+  document.getElementById('al-pass').value = ''
+  document.getElementById('admin-login-err').style.display = 'none'
+  openModal('modal-admin-login')
+}
+
+async function loginAdmin(){
+  var username = document.getElementById('al-user').value.trim()
+  var password = document.getElementById('al-pass').value
+  var errEl = document.getElementById('admin-login-err')
+  errEl.style.display='none'
+  var res = await db.from('users').select('*').eq('username',username).eq('is_admin',true).maybeSingle()
+  if(!res.data||res.data.password!==password){ showE(errEl,'Błędne dane!'); return }
+  currentUser = res.data
+  localStorage.setItem('mgspay_user',JSON.stringify(currentUser))
+  closeModal('modal-admin-login')
+  showAdminApp()
+}
+
+// USER
+async function loadUserInvestments(){
+  var res = await db.from('investments').select('*').eq('user_id',currentUser.id).order('invest_date',{ascending:false})
+  var c = document.getElementById('user-investments')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:16px">Brak inwestycji</div>'; return }
+  c.innerHTML = res.data.map(function(inv){
+    var cls = inv.status==='paid'?'paid':inv.percent?'':'pending'
+    var pctLabel = inv.percent!=null?(inv.percent>0?'+':'')+inv.percent+'%':'Oczekuje na decyzję admina'
+    var statusLabel = inv.status==='paid'?'✅ Wypłacono':inv.percent!=null?'⏳ Czeka na wypłatę':'🕐 Oczekuje'
+    var badgeCls = inv.status==='paid'?'badge-green':inv.percent!=null?'badge-blue':'badge-gold'
+    return '<div class="invest-item '+cls+'">' +
+      '<div class="invest-amount">'+inv.amount+' MGS</div>' +
+      '<div class="invest-meta">Data: '+fmtDate(inv.invest_date)+(inv.payout_date?'<br>Wypłata: '+fmtDate(inv.payout_date):'')+(inv.percent!=null?'<br>Procent: <strong style="color:'+(inv.percent>0?'var(--green)':'var(--red)')+'">'+pctLabel+'</strong>':'')+'</div>' +
+      '<span class="badge '+badgeCls+'">'+statusLabel+'</span>' +
+    '</div>'
+  }).join('')
+}
+
+async function loadUserMessages(){
+  var res = await db.from('messages').select('*').eq('to_user',currentUser.username).order('created_at',{ascending:false})
+  var c = document.getElementById('user-messages')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:16px">Brak wiadomości</div>'; return }
+  c.innerHTML = res.data.map(function(m){
+    return '<div class="msg-item '+(m.read?'':'unread')+'">' +
+      '<div class="msg-from">'+escH(m.from_user)+'</div>' +
+      '<div class="msg-text">'+escH(m.content)+'</div>' +
+'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">' +
+'<div class="msg-date">'+fmtDate(m.created_at)+'</div>' +
+'<button onclick="deleteUserMessage(\''+m.id+'\')" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer;">Usuń</button>' +
+'</div>' +
+    '</div>'
+  }).join('')
+  await db.from('messages').update({read:true}).eq('to_user',currentUser.username)
+}
+
+async function doInvest(){
+  var amount = parseFloat(document.getElementById('invest-amount').value)
+  var errEl = document.getElementById('invest-err')
+  var sucEl = document.getElementById('invest-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!amount||amount<=0){ showE(errEl,'Podaj kwotę!'); return }
+  var fresh = await db.from('users').select('balance').eq('id',currentUser.id).maybeSingle()
+  if(!fresh.data||fresh.data.balance<amount){ showE(errEl,'Niewystarczające saldo!'); return }
+  var newBal = fresh.data.balance - amount
+  await db.from('users').update({balance:newBal}).eq('id',currentUser.id)
+  var pd = new Date(); pd.setDate(pd.getDate()+7)
+  await db.from('investments').insert({user_id:currentUser.id,amount,status:'pending',payout_date:pd.toISOString()})
+  currentUser.balance = newBal
+  localStorage.setItem('mgspay_user',JSON.stringify(currentUser))
+  document.getElementById('user-balance').textContent = newBal
+  showS(sucEl,'Zainwestowano '+amount+' MGS! Admin ustawi procent wkrótce.')
+  document.getElementById('invest-amount').value=''
+  await loadUserInvestments()
+}
+
+async function sendMessage(){
+  var content = document.getElementById('msg-content').value.trim()
+  var errEl = document.getElementById('msg-err')
+  var sucEl = document.getElementById('msg-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!content){ showE(errEl,'Wpisz wiadomość!'); return }
+  await db.from('messages').insert({from_user:currentUser.username,to_user:'milosz',content})
+  showS(sucEl,'Wiadomość wysłana!')
+  document.getElementById('msg-content').value=''
+}
+
+async function requestDelete(){
+  if(!confirm('Wysłać prośbę o usunięcie konta do administratora?')) return
+  await db.from('messages').insert({from_user:currentUser.username,to_user:'milosz',content:'🗑️ PROŚBA O USUNIĘCIE KONTA: Użytkownik '+currentUser.username+' prosi o usunięcie swojego konta.'})
+  alert('Prośba wysłana! Administrator skontaktuje się z Tobą.')
+}
+
+// ADMIN
+function adminTab(tab, btn){
+  document.querySelectorAll('.nav-tab').forEach(function(t){t.classList.remove('active')})
+  btn.classList.add('active')
+  ;['users','pending','investments','messages'].forEach(function(t){
+    document.getElementById('admin-tab-'+t).style.display = t===tab?'block':'none'
+  })
+  if(tab==='users') loadAdminUsers()
+  else if(tab==='pending') loadAdminPending()
+  else if(tab==='investments') loadAdminInvestments()
+  else if(tab==='messages') loadAdminMessages()
+}
+
+async function loadAdminUsers(){
+  var res = await db.from('users').select('*').eq('is_admin',false).eq('approved',true).order('username')
+  var c = document.getElementById('admin-users-list')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:20px">Brak użytkowników</div>'; return }
+  c.innerHTML = res.data.map(function(u){
+    return '<div class="user-row">' +
+      '<div class="user-row-top"><div class="user-name">'+escH(u.username)+'</div><div class="user-balance">'+u.balance+' MGS</div></div>' +
+      '<div style="font-size:11px;color:var(--gray2)">Karta CSO: '+(u.cso_card||'-')+' · Dołączył: '+fmtDate(u.created_at)+'</div>' +
+'<div class="user-actions">' +
+  '<button style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:var(--green);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;" onclick="quickAddFunds(\''+u.id+'\',\''+escH(u.username)+'\')">💰 Dodaj środki</button>' +
+  '<button style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue3);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;" onclick="openSendMsgTo(\''+escH(u.username)+'\')">✉️ Wiadomość</button>' +
+  '<button style="background:'+(u.blocked?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)')+';border:1px solid '+(u.blocked?'rgba(16,185,129,.3)':'rgba(245,158,11,.3)')+';color:'+(u.blocked?'var(--green)':'var(--gold)')+';border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;" onclick="adminBlock(\''+u.id+'\',\''+escH(u.username)+'\','+u.blocked+')">'+( u.blocked?'🔓 Odblokuj':'🔒 Zablokuj')+'</button>' +
+  '<button style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--red);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;" onclick="adminDeleteUser(\''+u.id+'\',\''+escH(u.username)+'\')">🗑️ Usuń</button>' +
+'</div>' +
+    '</div>'
+  }).join('')
+}
+
+async function loadAdminPending(){
+  var res = await db.from('users').select('*').eq('is_admin',false).eq('approved',false).order('created_at')
+  var c = document.getElementById('admin-pending-list')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:20px">Brak oczekujących kont</div>'; return }
+  c.innerHTML = res.data.map(function(u){
+    return '<div class="user-row">' +
+      '<div class="user-row-top"><div class="user-name">'+escH(u.username)+'</div><span class="badge badge-gold">Oczekuje</span></div>' +
+      '<div style="font-size:12px;color:var(--gray2);margin-bottom:4px">Karta CSO: <strong style="color:var(--white)">'+escH(u.cso_card||'-')+'</strong></div>' +
+      '<div style="font-size:11px;color:var(--gray2);margin-bottom:10px">Rejestracja: '+fmtDate(u.created_at)+'</div>' +
+      '<div class="user-actions">' +
+        '<button class="btn btn-green btn-sm" onclick="adminApprove(\''+u.id+'\',\''+escH(u.username)+'\')">✓ Zatwierdź</button>' +
+        '<button class="btn btn-red btn-sm" onclick="adminReject(\''+u.id+'\')">✗ Odrzuć</button>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+}
+
+async function loadAdminInvestments(){
+  var res = await db.from('investments').select('*, users(username)').neq('status','paid').order('invest_date')
+  var c = document.getElementById('admin-invest-list')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:20px">Brak aktywnych inwestycji</div>'; return }
+  var now = new Date()
+  for(var i=0;i<res.data.length;i++){
+    var inv = res.data[i]
+    if(inv.percent==null && new Date(inv.payout_date)<now){
+      var opts=[10,10,10,29,-10]
+      var rp=opts[Math.floor(Math.random()*opts.length)]
+      await db.from('investments').update({percent:rp}).eq('id',inv.id)
+      inv.percent=rp
+    }
+  }
+  c.innerHTML = res.data.map(function(inv){
+    var uname = inv.users?inv.users.username:'-'
+    var overdue = inv.percent==null && new Date(inv.payout_date)<now
+    return '<div class="user-row">' +
+      '<div class="user-row-top"><div class="user-name">'+escH(uname)+'</div><div class="user-balance">'+inv.amount+' MGS</div></div>' +
+      '<div style="font-size:11px;color:var(--gray2);margin-bottom:6px">Inwestycja: '+fmtDate(inv.invest_date)+' · Wypłata: '+fmtDate(inv.payout_date)+'</div>' +
+      '<div style="font-size:12px;margin-bottom:10px">Procent: <strong style="color:'+(inv.percent!=null?(inv.percent>0?'var(--green)':'var(--red)'):'var(--gold)')+'">'+( inv.percent!=null?(inv.percent>0?'+':'')+inv.percent+'%':'Nie ustawiono')+'</strong>'+(overdue?' <span style="color:var(--gold)">⚠️ Auto-wylosowano</span>':'')+'</div>' +
+      '<button class="btn btn-blue btn-sm" onclick="openSetPercent(\''+inv.id+'\',\''+inv.user_id+'\','+inv.amount+',\''+escH(uname)+'\')">⚙️ Ustaw % i wypłać</button>' +
+    '</div>'
+  }).join('')
+}
+
+async function loadAdminMessages(){
+  var res = await db.from('messages').select('*').eq('to_user','milosz').order('created_at',{ascending:false})
+  var c = document.getElementById('admin-messages-list')
+  if(!res.data||!res.data.length){ c.innerHTML='<div style="color:var(--gray2);font-size:13px;text-align:center;padding:20px">Brak wiadomości</div>'; return }
+  c.innerHTML = res.data.map(function(m){
+    return '<div class="msg-item '+(m.read?'':'unread')+'" style="position:relative">' +
+      '<div class="msg-from">Od: '+escH(m.from_user)+'</div>' +
+      '<div class="msg-text">'+escH(m.content)+'</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">' +
+        '<div class="msg-date">'+fmtDate(m.created_at)+'</div>' +
+        '<button onclick="deleteMessage(\''+m.id+'\')" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;hover:background:rgba(239,68,68,.1)">Usuń</button>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+  await db.from('messages').update({read:true}).eq('to_user','milosz')
+}
+
+async function deleteMessage(id){
+  await db.from('messages').delete().eq('id',id)
+  await loadAdminMessages()
+}
+
+async function deleteUserMessage(id){
+  await db.from('messages').delete().eq('id',id)
+  await loadUserMessages()
+}
+
+async function adminApprove(userId, username){
+  await db.from('users').update({approved:true}).eq('id',userId)
+  await db.from('messages').insert({from_user:'MGS Payments',to_user:username,content:'✅ Twoje konto zostało aktywowane! Możesz się zalogować i korzystać z MGS Payments.'})
+  await loadAdminPending()
+}
+
+async function adminReject(userId){
+  if(!confirm('Odrzucić i usunąć konto?')) return
+  await db.from('users').delete().eq('id',userId)
+  await loadAdminPending()
+}
+
+async function adminAddUser(){
+  var username = document.getElementById('nu-user').value.trim()
+  var password = document.getElementById('nu-pass').value
+  var balance = parseFloat(document.getElementById('nu-balance').value)||0
+  var errEl = document.getElementById('add-user-err')
+  var sucEl = document.getElementById('add-user-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!username||!password){ showE(errEl,'Wypełnij pola!'); return }
+  var check = await db.from('users').select('id').eq('username',username).maybeSingle()
+  if(check.data){ showE(errEl,'Login zajęty!'); return }
+  await db.from('users').insert({username,password,balance,approved:true,is_admin:false})
+  showS(sucEl,'Użytkownik dodany!')
+  document.getElementById('nu-user').value=''
+  document.getElementById('nu-pass').value=''
+  document.getElementById('nu-balance').value='0'
+  await loadAdminUsers()
+}
+
+async function adminAddFunds(){
+  var username = document.getElementById('af-user').value.trim()
+  var amount = parseFloat(document.getElementById('af-amount').value)
+  var errEl = document.getElementById('add-funds-err')
+  var sucEl = document.getElementById('add-funds-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!username||!amount||amount<=0){ showE(errEl,'Wypełnij pola!'); return }
+  var uRes = await db.from('users').select('*').eq('username',username).maybeSingle()
+  if(!uRes.data){ showE(errEl,'Nie znaleziono użytkownika!'); return }
+  var newBal = uRes.data.balance + amount
+  await db.from('users').update({balance:newBal}).eq('id',uRes.data.id)
+  await db.from('messages').insert({from_user:'MGS Payments',to_user:username,content:'💰 Administrator dodał '+amount+' MGS na Twoje konto. Nowe saldo: '+newBal+' MGS.'})
+  showS(sucEl,'Dodano '+amount+' MGS dla '+username+'!')
+  document.getElementById('af-user').value=''
+  document.getElementById('af-amount').value=''
+  await loadAdminUsers()
+}
+
+async function quickAddFunds(userId, username){
+  var amount = parseFloat(prompt('Ile MGS dodać dla '+username+'?'))
+  if(!amount||isNaN(amount)||amount<=0) return
+  var uRes = await db.from('users').select('balance').eq('id',userId).maybeSingle()
+  var newBal = uRes.data.balance + amount
+  await db.from('users').update({balance:newBal}).eq('id',userId)
+  await db.from('messages').insert({from_user:'MGS Payments',to_user:username,content:'💰 Administrator dodał '+amount+' MGS na Twoje konto. Nowe saldo: '+newBal+' MGS.'})
+  await loadAdminUsers()
+}
+
+function openSetPercent(investId, userId, amount, username){
+  document.getElementById('percent-invest-id').value = investId
+  document.getElementById('percent-user-id').value = userId
+  document.getElementById('percent-amount').value = amount
+  document.getElementById('percent-val').value = ''
+  document.getElementById('percent-err').style.display='none'
+  document.getElementById('percent-suc').style.display='none'
+  document.getElementById('percent-invest-info').textContent = 'Użytkownik: '+username+' · Kwota: '+amount+' MGS'
+  openModal('modal-set-percent')
+}
+
+async function adminSetPercent(payNow){
+  var investId = document.getElementById('percent-invest-id').value
+  var userId = document.getElementById('percent-user-id').value
+  var amount = parseFloat(document.getElementById('percent-amount').value)
+  var percent = parseFloat(document.getElementById('percent-val').value)
+  var errEl = document.getElementById('percent-err')
+  var sucEl = document.getElementById('percent-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(isNaN(percent)){ showE(errEl,'Wpisz procent!'); return }
+  var payout = Math.round(amount*(1+percent/100)*100)/100
+
+  if(payNow){
+    var uRes = await db.from('users').select('*').eq('id',userId).maybeSingle()
+    var newBal = uRes.data.balance + payout
+    await db.from('users').update({balance:newBal}).eq('id',userId)
+    await db.from('investments').update({percent,status:'paid',paid_at:new Date().toISOString()}).eq('id',investId)
+    await db.from('messages').insert({from_user:'MGS Payments',to_user:uRes.data.username,content:'💰 Twoja inwestycja '+amount+' MGS została wypłacona! Wynik: '+(percent>0?'+':'')+percent+'% · Otrzymujesz: '+payout+' MGS. Nowe saldo: '+newBal+' MGS.'})
+    showS(sucEl,'Wypłacono! Użytkownik otrzymał '+payout+' MGS.')
+  } else {
+    await db.from('investments').update({percent}).eq('id',investId)
+    showS(sucEl,'Procent ustawiony na '+(percent>0?'+':'')+percent+'%. Wypłata w zaplanowanym terminie.')
+  }
+  await loadAdminInvestments()
+}
+
+async function adminBlock(userId, username, isBlocked){
+  if(isBlocked){
+    await db.from('users').update({blocked:false, block_reason:null}).eq('id',userId)
+    await db.from('messages').insert({from_user:'MGS Payments', to_user:username, content:'✅ Twoje konto zostało odblokowane. Możesz korzystać z MGS Payments.'})
+    await loadAdminUsers()
+  } else {
+    var reason = prompt('Podaj powód blokady dla '+username+':')
+    if(!reason) return
+    await db.from('users').update({blocked:true, block_reason:reason}).eq('id',userId)
+    await db.from('messages').insert({from_user:'MGS Payments', to_user:username, content:'🔒 Twoje konto zostało zablokowane. Powód: '+reason+'. Skontaktuj się z administracją MGS.'})
+    await loadAdminUsers()
+  }
+}
+
+async function adminDeleteUser(userId, username){
+  if(!confirm('Usunąć konto '+username+'? Tej operacji nie można cofnąć!')) return
+  await db.from('investments').delete().eq('user_id',userId)
+  await db.from('messages').delete().eq('from_user',username)
+  await db.from('messages').delete().eq('to_user',username)
+  await db.from('users').delete().eq('id',userId)
+  await loadAdminUsers()
+}
+
+function openSendMsgTo(username){
+  document.getElementById('sm-to').value = username
+  document.getElementById('sm-content').value = ''
+  document.getElementById('send-msg-err').style.display='none'
+  document.getElementById('send-msg-suc').style.display='none'
+  openModal('modal-send-msg')
+}
+
+async function adminSendMessage(){
+  var to = document.getElementById('sm-to').value.trim()
+  var content = document.getElementById('sm-content').value.trim()
+  var errEl = document.getElementById('send-msg-err')
+  var sucEl = document.getElementById('send-msg-suc')
+  errEl.style.display='none'; sucEl.style.display='none'
+  if(!to||!content){ showE(errEl,'Wypełnij pola!'); return }
+  if(to==='wszyscy'){
+    var all = await db.from('users').select('username').eq('is_admin',false).eq('approved',true)
+    for(var i=0;i<(all.data||[]).length;i++){
+      await db.from('messages').insert({from_user:'MGS Payments',to_user:all.data[i].username,content})
+    }
+    showS(sucEl,'Wiadomość wysłana do wszystkich!')
+  } else {
+    var uRes = await db.from('users').select('id').eq('username',to).maybeSingle()
+    if(!uRes.data){ showE(errEl,'Nie znaleziono użytkownika!'); return }
+    await db.from('messages').insert({from_user:'MGS Payments',to_user:to,content})
+    showS(sucEl,'Wiadomość wysłana!')
+  }
+  document.getElementById('sm-content').value=''
+}
+
+// HELPERS
+function openModal(id){ document.getElementById(id).classList.add('open') }
+function closeModal(id){ document.getElementById(id).classList.remove('open') }
+function showE(el,msg){ el.textContent=msg; el.style.display='block' }
+function showS(el,msg){ el.textContent=msg; el.style.display='block' }
+function escH(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+function fmtDate(d){ return d?new Date(d).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'-' }
+</script>
+</body>
+</html>
